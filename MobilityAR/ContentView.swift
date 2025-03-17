@@ -13,6 +13,7 @@ import Combine
 
 struct ContentView : View {
     @StateObject private var arViewModel = ARViewModel()
+    @State private var showDebug = false
     
     var body: some View {
         ZStack {
@@ -40,10 +41,27 @@ struct ContentView : View {
                 
             // Controls overlay
             VStack {
+                // Debug toggle button in top right
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        showDebug.toggle()
+                    }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 20))
+                            .padding(10)
+                            .background(Color.black.opacity(0.5))
+                            .foregroundColor(.white)
+                            .clipShape(Circle())
+                    }
+                    .padding(.top, 50)
+                    .padding(.trailing, 20)
+                }
+                
                 Spacer()
                 
-                // Place button for final placement
-                if arViewModel.placementStage == .readyToPlace {
+                // Place button for final placement - only in placement mode
+                if arViewModel.placementMode && arViewModel.placementStage == .rotationAdjustment {
                     Button(action: {
                         arViewModel.placeCube()
                     }) {
@@ -74,33 +92,34 @@ struct ContentView : View {
                     .padding(.bottom, 20)
                 }
                 
-                // Debug panel
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Mode: \(arViewModel.placementMode ? "Placement" : "Interaction")")
-                    Text("Stage: \(arViewModel.placementStageText)")
-                    Text("Inside cube: \(arViewModel.isInsideCube ? "Yes" : "No")")
-                    Text("Distance to surface: \(arViewModel.distanceToSurface, specifier: "%.3f") m")
-                    Text("Rotation: \(Int(arViewModel.currentRotationDegrees))°")
-                    Text("Planes detected: \(arViewModel.planesDetected)")
+                // Debug panel - only shown when toggled
+                if showDebug {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Mode: \(arViewModel.placementMode ? "Placement" : "Interaction")")
+                        Text("Stage: \(arViewModel.placementStageText)")
+                        Text("Inside cube: \(arViewModel.isInsideCube ? "Yes" : "No")")
+                        Text("Distance to surface: \(arViewModel.distanceToSurface, specifier: "%.3f") m")
+                        Text("Rotation: \(Int(arViewModel.currentRotationDegrees))°")
+                        Text("Planes detected: \(arViewModel.planesDetected)")
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .padding()
                 }
-                .padding()
-                .background(Color.black.opacity(0.7))
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                .padding()
             }
         }
     }
 }
 
-// Placement stages for the three-stage process
+// Simplified to just two placement stages
 enum PlacementStage {
     case positionSelection // Initial positioning
-    case rotationAdjustment // Adjusting rotation
-    case readyToPlace // Ready for final placement
+    case rotationAdjustment // Adjusting rotation and ready for placement
 }
 
-// AR View Model with three-stage placement
+// AR View Model with two-stage placement
 class ARViewModel: ObservableObject {
     // UI state properties
     @Published var isInsideCube = false
@@ -121,8 +140,6 @@ class ARViewModel: ObservableObject {
             return "Positioning"
         case .rotationAdjustment:
             return "Rotating"
-        case .readyToPlace:
-            return "Ready to Place"
         }
     }
     
@@ -142,7 +159,6 @@ class ARViewModel: ObservableObject {
     private var lastMoveTime: TimeInterval = 0
     private var hapticEngine: CHHapticEngine?
     private var sessionDelegate: ARSessionDelegate?
-    private var rotationGestureRecognizer: UIRotationGestureRecognizer?
     
     // Position stabilization
     private var positionHistory: [simd_float3] = []
@@ -196,10 +212,9 @@ class ARViewModel: ObservableObject {
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         arView.addGestureRecognizer(tapRecognizer)
         
-        // Replace rotation gesture with pan gesture for cube rotation
+        // Pan gesture for cube rotation
         let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         arView.addGestureRecognizer(panRecognizer)
-        self.rotationGestureRecognizer = nil // Remove the old rotation recognizer
     }
     
     // Create the actual interactive cube
@@ -235,8 +250,7 @@ class ARViewModel: ObservableObject {
     
     // Create rotation ring indicator
     private func createRotationRing() {
-        // Create a circular disc as rotation indicator instead of a torus
-        // (since MeshResource doesn't have generateTorus)
+        // Create a circular disc as rotation indicator
         let ringMesh = MeshResource.generatePlane(width: CUBE_SIZE * 1.4,
                                                  depth: CUBE_SIZE * 1.4)
         let material = SimpleMaterial(color: .white.withAlphaComponent(0.4),
@@ -317,11 +331,9 @@ class ARViewModel: ObservableObject {
             
         case .changed:
             // Calculate rotation based on horizontal pan movement
-            // Translation in points
             let translation = sender.translation(in: sender.view)
             
-            // Convert horizontal movement to rotation (adjust sensitivity as needed)
-            // Smaller divisor = more sensitive rotation
+            // Convert horizontal movement to rotation
             let rotationSensitivity: CGFloat = 50.0
             let rotationAmount = initialRotation + Float(translation.x / rotationSensitivity)
             
@@ -330,7 +342,9 @@ class ARViewModel: ObservableObject {
                 // Create rotation quaternion around Y axis
                 let rotation = simd_quatf(angle: rotationAmount, axis: SIMD3<Float>(0, 1, 0))
                 placementEntity.transform.rotation = rotation
-                placementEntity.transform.translation = .zero // Keep centered on anchor
+                
+                // Maintain position relative to parent
+                placementEntity.transform.translation = .zero
                 
                 // Update current rotation value for UI display (convert to degrees)
                 currentRotation = rotationAmount
@@ -360,6 +374,8 @@ class ARViewModel: ObservableObject {
                     // Animate to snapped position
                     var snapTransform = placementEntity.transform
                     snapTransform.rotation = rotation
+                    
+                    // FIXED: Use parent-relative positioning
                     placementEntity.move(to: snapTransform, relativeTo: placementEntity.parent, duration: 0.1)
                     
                     // Update rotation value
@@ -387,91 +403,9 @@ class ARViewModel: ObservableObject {
     @objc func handleTap(_ sender: UITapGestureRecognizer) {
         guard placementMode else { return }
         
-        switch placementStage {
-        case .positionSelection:
-            if positionStable {
-                // Transition to rotation adjustment stage
-                transitionToRotationStage()
-            }
-            
-        case .rotationAdjustment:
-            // Transition to ready-to-place stage
-            transitionToReadyStage()
-            
-        case .readyToPlace:
-            // Place the cube
-            placeCube()
-        }
-    }
-    
-    // Handle rotation gesture
-    @objc func handleRotation(_ sender: UIRotationGestureRecognizer) {
-        guard placementMode && placementStage == .rotationAdjustment else { return }
-        
-        switch sender.state {
-        case .began:
-            // Store initial values
-            initialRotation = currentRotation
-            
-        case .changed:
-            // Calculate new rotation around Y axis
-            let rotationAmount = initialRotation + Float(sender.rotation)
-            
-            // Apply rotation to preview entity
-            if let placementEntity = placementEntity {
-                // Create rotation quaternion around Y axis
-                let rotation = simd_quatf(angle: rotationAmount, axis: SIMD3<Float>(0, 1, 0))
-                placementEntity.transform.rotation = rotation
-                placementEntity.transform.translation = .zero // Keep centered on anchor
-                
-                // Update current rotation value for UI display (convert to degrees)
-                currentRotation = rotationAmount
-                
-                // Update UI
-                DispatchQueue.main.async {
-                    self.currentRotationDegrees = self.currentRotation * 180 / .pi
-                }
-            }
-            
-        case .ended:
-            // Snap rotation to nearest increment if desired
-            if let placementEntity = placementEntity {
-                // Convert to degrees for snapping
-                let rotationDegrees = currentRotation * 180 / .pi
-                
-                // Calculate nearest snap angle
-                let snapRotationDegrees = round(rotationDegrees / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
-                let snapRotation = snapRotationDegrees * .pi / 180
-                
-                // Only snap if it's a small adjustment
-                let diffDegrees = abs(rotationDegrees - snapRotationDegrees)
-                if diffDegrees < 10 {  // Snap if within 10 degrees
-                    // Create rotation quaternion for snapped angle
-                    let rotation = simd_quatf(angle: snapRotation, axis: SIMD3<Float>(0, 1, 0))
-                    
-                    // Animate to snapped position
-                    var snapTransform = placementEntity.transform
-                    snapTransform.rotation = rotation
-                    placementEntity.move(to: snapTransform, relativeTo: placementEntity.parent, duration: 0.1)
-                    
-                    // Update rotation value
-                    currentRotation = snapRotation
-                    
-                    // Provide haptic feedback for snap
-                    triggerSnapHapticFeedback()
-                    
-                    // Update UI
-                    DispatchQueue.main.async {
-                        self.currentRotationDegrees = snapRotationDegrees
-                    }
-                } else {
-                    // Keep current rotation if not snapping
-                    currentRotation = initialRotation + Float(sender.rotation)
-                }
-            }
-            
-        default:
-            break
+        if placementStage == .positionSelection && positionStable {
+            // Transition to rotation adjustment stage
+            transitionToRotationStage()
         }
     }
     
@@ -502,39 +436,7 @@ class ARViewModel: ObservableObject {
         
         // Update instruction to reflect single-finger pan
         DispatchQueue.main.async {
-            self.instructionText = "Swipe left or right to rotate, tap when done"
-        }
-        
-        // Provide haptic feedback for stage transition
-        triggerStageTransitionHaptic()
-    }
-    
-    // Transition to ready-to-place stage
-    private func transitionToReadyStage() {
-        guard placementStage == .rotationAdjustment else { return }
-        
-        // Transition to final placement stage
-        placementStage = .readyToPlace
-        
-        // Important: Lock the placement entity's position and rotation
-            // by creating a copy of its current transform
-        if let placementEntity = placementEntity, let mainAnchor = mainAnchor {
-            // Create a clean transform with just rotation
-            var lockedTransform = Transform.identity
-            lockedTransform.rotation = placementEntity.transform.rotation
-            lockedTransform.translation = .zero
-            placementEntity.transform = lockedTransform
-        }
-        
-        // Update appearance for ready state
-        updatePlacementColor(UIColor(red: 0.3, green: 0.8, blue: 0.3, alpha: 0.7))
-        
-        // Add subtle pulsing animation
-        addPulseAnimation()
-        
-        // Update instruction
-        DispatchQueue.main.async {
-            self.instructionText = "Tap to place cube"
+            self.instructionText = "Swipe left or right to rotate, tap Place Cube when ready"
         }
         
         // Provide haptic feedback for stage transition
@@ -543,7 +445,7 @@ class ARViewModel: ObservableObject {
     
     // Place cube by directly swapping entities within the same anchor
     func placeCube() {
-        guard (placementStage == .readyToPlace || placementStage == .rotationAdjustment),
+        guard placementStage == .rotationAdjustment,
               let arView = arView,
               let mainAnchor = mainAnchor,
               let placementEntity = placementEntity,
@@ -586,29 +488,6 @@ class ARViewModel: ObservableObject {
             self.arReady = true
             self.instructionText = "Walk around the cube to explore"
         }
-    }
-    
-    // Add subtle pulsing animation to indicate ready state
-    private func addPulseAnimation() {
-        
-        guard let placementEntity = placementEntity else { return }
-        
-        // Create subtle scale animation
-        let originalScale = placementEntity.transform.scale
-        let pulseScale = originalScale * 1.05
-        
-        // Animate scale up
-        var pulseUpTransform = placementEntity.transform
-        pulseUpTransform.scale = pulseScale
-        placementEntity.move(to: pulseUpTransform, relativeTo: placementEntity.parent, duration: 0.5)
-        
-        // Schedule scale down after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            var pulseDownTransform = placementEntity.transform
-            pulseDownTransform.scale = originalScale
-            placementEntity.move(to: pulseUpTransform, relativeTo: placementEntity.parent, duration: 0.5)
-        }
-         
     }
     
     // Enter placement mode
@@ -1110,7 +989,13 @@ class SessionDelegate: NSObject, ARSessionDelegate {
         }
     }
     
-
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        for anchor in anchors {
+            if let planeAnchor = anchor as? ARPlaneAnchor {
+                viewModel?.updatePlaneVisualization(for: planeAnchor)
+            }
+        }
+    }
 }
 
 // UIViewRepresentable for ARView
