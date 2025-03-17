@@ -191,6 +191,18 @@ extension ARViewModel {
         if placementStage == .positionSelection && positionStable {
             // Transition to rotation adjustment stage
             transitionToRotationStage()
+            
+            // Provide haptic feedback for successful tap
+            triggerPlacementHapticFeedback()
+            
+            // Print debug message to console
+            print("PlacementMode: Tap handled, transitioning to rotation stage")
+        } else if placementStage == .positionSelection && !positionStable {
+            // Provide feedback that we're not ready yet
+            DispatchQueue.main.async {
+                self.instructionText = "Keep holding steady until position stabilizes"
+            }
+            print("PlacementMode: Tap received but position not stable yet")
         }
     }
     
@@ -498,6 +510,9 @@ extension ARViewModel {
         
         // Reset state
         resetState()
+        
+        // Make sure we clean up any conflicting gesture recognizers
+        cleanupRedundantGestureRecognizers()
     }
     
     // Clean up all existing entities
@@ -588,6 +603,9 @@ extension ARViewModel {
         // Note: We keep the main anchor since it now contains the real cube
         // Note: We also keep the footprint anchors
         
+        // Make sure we clean up any conflicting gesture recognizers
+        cleanupRedundantGestureRecognizers()
+        
         // Update state
         DispatchQueue.main.async {
             self.placementMode = false
@@ -670,6 +688,9 @@ extension ARViewModel {
                     maxVariance = max(maxVariance, distance)
                 }
                 
+                // Updated stability threshold to make it easier to achieve stability
+                let STABILITY_THRESHOLD: Float = 0.01 // Increased from 0.005
+                
                 // Update stability status
                 let isStable = maxVariance < STABILITY_THRESHOLD
                 if isStable {
@@ -708,7 +729,7 @@ extension ARViewModel {
                     showPreviewFootprints()
                     updatePreviewFootprints(rotation: targetRotation)
                     
-                    // Update UI
+                    // Update UI with enhanced visual indicator
                     updatePlacementStatus(true, "Tap to adjust rotation")
                     updatePlacementColor(.green)
                 } else {
@@ -737,7 +758,8 @@ extension ARViewModel {
             }
         } else {
             positionUpdateCount += 1
-            if positionUpdateCount > 30 { // About 1 second at 30fps
+            // Only clear after longer period of no detection (increased from 30 to 60 frames)
+            if positionUpdateCount > 60 { // About 2 seconds at 30fps
                 // Lost tracking for a while
                 updatePlacementStatus(false, "Point at a flat surface")
                 updatePlacementColor(.blue)
@@ -746,11 +768,17 @@ extension ARViewModel {
         }
     }
     
-    // Helper to update placement status
+    // Helper to update placement status with enhanced visual indicator
     func updatePlacementStatus(_ stable: Bool, _ message: String) {
         DispatchQueue.main.async {
             self.positionStable = stable
-            self.instructionText = message
+            
+            // Add extra indicator for when it's ready for tapping
+            if stable {
+                self.instructionText = "✓ " + message + " - Ready!"
+            } else {
+                self.instructionText = message
+            }
         }
     }
     

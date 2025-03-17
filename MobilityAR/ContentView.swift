@@ -1,5 +1,5 @@
 //
-//  ContentView.swift Updates
+//  ContentView.swift
 //  MobilityAR
 //
 
@@ -17,6 +17,7 @@ struct ContentView : View {
                 .edgesIgnoringSafeArea(.all)
                 .onAppear {
                     arViewModel.prepareHaptics()
+                    arViewModel.setupExerciseAdministration()
                 }
             
             // Instructions overlay
@@ -160,6 +161,45 @@ struct ContentView : View {
                     }
                 }
                 
+                // BENDING EXERCISE OVERLAY - only visible in bending mode
+                if arViewModel.bendingMode {
+                    VStack {
+                        // Level indicator
+                        Text("Level \(arViewModel.currentLevel) of \(arViewModel.maxLevels)")
+                            .font(.headline)
+                            .padding()
+                            .background(Color.black.opacity(0.7))
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        
+                        // Current height indicator
+                        Text("Height: \(Int(arViewModel.targetSphereHeight * 100))cm")
+                            .font(.subheadline)
+                            .padding()
+                            .background(Color.black.opacity(0.7))
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        
+                        Spacer()
+                        
+                        // Exit exercise button
+                        Button(action: {
+                            arViewModel.exitBendingMode()
+                        }) {
+                            HStack {
+                                Image(systemName: "xmark.circle")
+                                Text("Exit Exercise")
+                            }
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            .shadow(radius: 3)
+                        }
+                        .padding(.bottom, 30)
+                    }
+                }
+                
                 // Place button for final placement - only in placement mode
                 if arViewModel.placementMode && arViewModel.placementStage == .rotationAdjustment {
                     Button(action: {
@@ -176,8 +216,8 @@ struct ContentView : View {
                     .padding(.bottom, 20)
                 }
                 
-                // Bottom controls - only shown in interaction mode (not placement and not drawing)
-                if arViewModel.arReady && !arViewModel.placementMode && !arViewModel.drawingMode {
+                // Bottom controls - only shown in interaction mode (not placement, not drawing, not bending)
+                if arViewModel.arReady && !arViewModel.placementMode && !arViewModel.drawingMode && !arViewModel.bendingMode {
                     HStack(spacing: 20) {
                         // Enter drawing mode button
                         Button(action: {
@@ -212,6 +252,23 @@ struct ContentView : View {
                             .cornerRadius(8)
                             .shadow(radius: 3)
                         }
+                        
+                        // Exercise button - NEW ADDITION
+                        Button(action: {
+                            arViewModel.enterBendingMode()
+                        }) {
+                            VStack {
+                                Image(systemName: "figure.bend.down")
+                                    .font(.system(size: 24))
+                                Text("Exercise")
+                                    .font(.caption)
+                            }
+                            .frame(width: 70, height: 70)
+                            .background(Color.purple)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            .shadow(radius: 3)
+                        }
                     }
                     .padding(.bottom, 20)
                 }
@@ -219,14 +276,20 @@ struct ContentView : View {
                 // Debug panel - only shown when toggled
                 if showDebug {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Mode: \(arViewModel.placementMode ? "Placement" : arViewModel.drawingMode ? "Drawing" : "Interaction")")
+                        Text("Mode: \(arViewModel.placementMode ? "Placement" : arViewModel.drawingMode ? "Drawing" : arViewModel.bendingMode ? "Exercise" : "Interaction")")
                         if arViewModel.placementMode {
                             Text("Stage: \(arViewModel.placementStageText)")
+                            Text("Position stable: \(arViewModel.positionStable ? "Yes" : "No")")
                         }
                         if arViewModel.drawingMode {
                             Text("Color: \(arViewModel.selectedDrawingColor.name)")
                             Text("Drawing active: \(arViewModel.isDrawingActive ? "Yes" : "No")")
                             Text("Drawing points: \(arViewModel.drawingPoints.count)")
+                        }
+                        if arViewModel.bendingMode {
+                            Text("Exercise: Bending")
+                            Text("Current level: \(arViewModel.currentLevel)")
+                            Text("Target height: \(arViewModel.targetSphereHeight, specifier: "%.2f")m")
                         }
                         Text("Inside cube: \(arViewModel.isInsideCube ? "Yes" : "No")")
                         Text("Distance to surface: \(arViewModel.distanceToSurface, specifier: "%.3f") m")
@@ -240,17 +303,70 @@ struct ContentView : View {
                     .padding()
                 }
             }
+            
+            // EXERCISE RESULTS POPUP - shown when exercise is completed
+            if arViewModel.exerciseComplete, let stats = arViewModel.exerciseStats {
+                ZStack {
+                    // Semi-transparent overlay
+                    Color.black.opacity(0.5)
+                        .edgesIgnoringSafeArea(.all)
+                    
+                    // Results card
+                    VStack {
+                        Text("Exercise Complete!")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.top)
+                        
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Levels completed: \(stats.reachedLevels)")
+                            Text("Max depth: \(Int(stats.maxDepthReached * 100))cm")
+                            Text("Total time: \(Int(stats.totalDuration))s")
+                            Text("Avg rep time: \(String(format: "%.1f", stats.averageRepTime))s")
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Button(action: {
+                            arViewModel.exitBendingMode(completed: true)
+                        }) {
+                            Text("Continue")
+                                .fontWeight(.bold)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom)
+                    }
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .shadow(radius: 10)
+                    .padding(20)
+                    .frame(maxWidth: 350)
+                }
+            }
         }
     }
 }
 
-// UIViewRepresentable for ARView remains unchanged
+// UIViewRepresentable for ARView with added bending exercise tap
 struct ARViewContainer: UIViewRepresentable {
     var viewModel: ARViewModel
     
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
         viewModel.setupARView(arView)
+        
+        // Add tap gesture for bending exercise with improved settings
+        let bendingTapRecognizer = UITapGestureRecognizer(target: viewModel, action: #selector(ARViewModel.handleBendingTap(_:)))
+        // Add these properties to avoid conflicts with other gestures
+        bendingTapRecognizer.requiresExclusiveTouchType = true
+        bendingTapRecognizer.name = "bendingTapGesture"
+        arView.addGestureRecognizer(bendingTapRecognizer)
+        
         return arView
     }
     

@@ -29,6 +29,50 @@ class ARViewModel: ObservableObject {
     @Published var drawingMode = false
     @Published var selectedDrawingColor: DrawingColor = .red
     @Published var isDrawingActive = false // Tracks if user is touching screen for drawing
+    
+    // MARK: - Bending Exercise Properties
+    // Bending mode state
+    @Published var bendingMode = false
+    @Published var targetSphereHeight: Float = 1.0
+    @Published var currentLevel: Int = 1
+    @Published var maxLevels: Int = 10
+    @Published var exerciseComplete = false
+    @Published var exerciseStarted = false
+
+    // Exercise metrics tracking structure
+    struct ExerciseStats {
+        var startTime: Date
+        var endTime: Date?
+        var reachedLevels: Int
+        var maxDepthReached: Float
+        var repetitionTimes: [TimeInterval]
+        
+        var totalDuration: TimeInterval {
+            guard let endTime = endTime else {
+                return Date().timeIntervalSince(startTime)
+            }
+            return endTime.timeIntervalSince(startTime)
+        }
+        
+        var averageRepTime: TimeInterval {
+            if repetitionTimes.isEmpty { return 0 }
+            return repetitionTimes.reduce(0, +) / Double(repetitionTimes.count)
+        }
+    }
+
+    // Reference to exercise administration
+    var exerciseAdmin: ExerciseAdministration?
+    @Published var exerciseStats: ExerciseStats?
+
+    // Exercise entities
+    var targetSphereEntity: ModelEntity?
+    var targetSphereAnchor: AnchorEntity?
+    var levelTextEntity: ModelEntity?
+    var levelTextAnchor: AnchorEntity?
+    var successParticleSystem: ParticleEmitterComponent?
+
+    // Timing variables for exercise
+    var levelStartTime: Date?
 
     // Drawing data storage
     var drawingPoints: [DrawingPoint] = []
@@ -40,6 +84,15 @@ class ARViewModel: ObservableObject {
     var rightFootprintEntity: ModelEntity?
     var leftFootprintAnchor: AnchorEntity?
     var rightFootprintAnchor: AnchorEntity?
+    
+    // New properties for enhanced exercise feedback
+    var initialSpherePositionXYZ: SIMD3<Float>?
+    var isAdvancingLevel = false
+    var guideArrowEntity: ModelEntity?
+    var guideArrowAnchor: AnchorEntity?
+    var progressTrackEntity: ModelEntity?
+    var progressMarkerEntity: ModelEntity?
+    var progressTrackAnchor: AnchorEntity?
 
     
     // Computed property for UI display
@@ -81,7 +134,7 @@ class ARViewModel: ObservableObject {
     
     // Constants
     let POSITION_HISTORY_SIZE = 10
-    let STABILITY_THRESHOLD: Float = 0.005
+    let STABILITY_THRESHOLD: Float = 0.01  // Increased from 0.005 to 0.01 for easier stabilization
     let MIN_PLACEMENT_DISTANCE: Float = 0.3
     let MAX_PLACEMENT_DISTANCE: Float = 2.0
     let CUBE_SIZE: Float = 0.1
@@ -119,10 +172,12 @@ class ARViewModel: ObservableObject {
     private func addGestureRecognizers(to arView: ARView) {
         // Tap gesture for stage transitions
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tapRecognizer.name = "placementTapGesture" // Add name for identification
         arView.addGestureRecognizer(tapRecognizer)
         
         // Pan gesture for cube rotation
         let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panRecognizer.name = "rotationPanGesture" // Add name for identification
         arView.addGestureRecognizer(panRecognizer)
     }
     
@@ -499,6 +554,54 @@ class ARViewModel: ObservableObject {
             print("Failed to play haptic pattern: \(error)")
         }
     }
+    
+    // NEW FUNCTION: Clean up redundant gesture recognizers
+    func cleanupRedundantGestureRecognizers() {
+        guard let arView = arView else { return }
+        
+        // Print all gestures before cleanup
+        print("Gestures before cleanup: \(arView.gestureRecognizers?.count ?? 0)")
+        
+        // Track gesture recognizers we've already seen by type and name
+        var tapRecognizers: [String: Int] = [:]
+        var panRecognizers: [String: Int] = [:]
+        var longPressRecognizers: [String: Int] = [:]
+        
+        // Iterate through gesture recognizers
+        for recognizer in arView.gestureRecognizers ?? [] {
+            if let tap = recognizer as? UITapGestureRecognizer {
+                let name = tap.name ?? "unnamed"
+                tapRecognizers[name] = (tapRecognizers[name] ?? 0) + 1
+                
+                // If we have more than one of this named tap recognizer, remove it
+                if tapRecognizers[name]! > 1 {
+                    print("Removing duplicate tap recognizer: \(name)")
+                    arView.removeGestureRecognizer(tap)
+                }
+            } else if let pan = recognizer as? UIPanGestureRecognizer {
+                let name = pan.name ?? "unnamed"
+                panRecognizers[name] = (panRecognizers[name] ?? 0) + 1
+                
+                // If we have more than one of this named pan recognizer, remove it
+                if panRecognizers[name]! > 1 {
+                    print("Removing duplicate pan recognizer: \(name)")
+                    arView.removeGestureRecognizer(pan)
+                }
+            } else if let longPress = recognizer as? UILongPressGestureRecognizer {
+                let name = longPress.name ?? "unnamed"
+                longPressRecognizers[name] = (longPressRecognizers[name] ?? 0) + 1
+                
+                // If we have more than one of this named long press recognizer, remove it
+                if longPressRecognizers[name]! > 1 {
+                    print("Removing duplicate long press recognizer: \(name)")
+                    arView.removeGestureRecognizer(longPress)
+                }
+            }
+        }
+        
+        // Print all gestures after cleanup
+        print("Gestures after cleanup: \(arView.gestureRecognizers?.count ?? 0)")
+    }
 }
 
 // Session delegate
@@ -512,6 +615,9 @@ class SessionDelegate: NSObject, ARSessionDelegate {
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         viewModel?.checkCameraPosition(frame: frame)
+        
+        // Add bending exercise tracking
+        viewModel?.updateBendingExercise(frame: frame)
     }
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
@@ -521,18 +627,23 @@ class SessionDelegate: NSObject, ARSessionDelegate {
             }
         }
     }
-    
-    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if let planeAnchor = anchor as? ARPlaneAnchor {
-                viewModel?.updatePlaneVisualization(for: planeAnchor)
-            }
+}
+
+// Extension to ExerciseStats to store performance score
+extension ARViewModel.ExerciseStats {
+    var performanceScore: Int? {
+        get {
+            return objc_getAssociatedObject(self, &performanceScoreKey) as? Int
+        }
+        set {
+            objc_setAssociatedObject(
+                self,
+                &performanceScoreKey,
+                newValue,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
         }
     }
-}//
-//  InteractionMode.swift
-//  MobilityAR
-//
-//  Created by Rafael Uribe on 17/03/25.
-//
+}
 
+private var performanceScoreKey: UInt8 = 0
