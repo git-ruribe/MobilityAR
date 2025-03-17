@@ -330,6 +330,7 @@ class ARViewModel: ObservableObject {
                 // Create rotation quaternion around Y axis
                 let rotation = simd_quatf(angle: rotationAmount, axis: SIMD3<Float>(0, 1, 0))
                 placementEntity.transform.rotation = rotation
+                placementEntity.transform.translation = .zero // Keep centered on anchor
                 
                 // Update current rotation value for UI display (convert to degrees)
                 currentRotation = rotationAmount
@@ -359,7 +360,7 @@ class ARViewModel: ObservableObject {
                     // Animate to snapped position
                     var snapTransform = placementEntity.transform
                     snapTransform.rotation = rotation
-                    placementEntity.move(to: snapTransform, relativeTo: nil, duration: 0.1)
+                    placementEntity.move(to: snapTransform, relativeTo: placementEntity.parent, duration: 0.1)
                     
                     // Update rotation value
                     currentRotation = snapRotation
@@ -421,6 +422,7 @@ class ARViewModel: ObservableObject {
                 // Create rotation quaternion around Y axis
                 let rotation = simd_quatf(angle: rotationAmount, axis: SIMD3<Float>(0, 1, 0))
                 placementEntity.transform.rotation = rotation
+                placementEntity.transform.translation = .zero // Keep centered on anchor
                 
                 // Update current rotation value for UI display (convert to degrees)
                 currentRotation = rotationAmount
@@ -450,7 +452,7 @@ class ARViewModel: ObservableObject {
                     // Animate to snapped position
                     var snapTransform = placementEntity.transform
                     snapTransform.rotation = rotation
-                    placementEntity.move(to: snapTransform, relativeTo: nil, duration: 0.1)
+                    placementEntity.move(to: snapTransform, relativeTo: placementEntity.parent, duration: 0.1)
                     
                     // Update rotation value
                     currentRotation = snapRotation
@@ -516,8 +518,11 @@ class ARViewModel: ObservableObject {
         
         // Important: Lock the placement entity's position and rotation
             // by creating a copy of its current transform
-        if let placementEntity = placementEntity {
-            let lockedTransform = placementEntity.transform
+        if let placementEntity = placementEntity, let mainAnchor = mainAnchor {
+            // Create a clean transform with just rotation
+            var lockedTransform = Transform.identity
+            lockedTransform.rotation = placementEntity.transform.rotation
+            lockedTransform.translation = .zero
             placementEntity.transform = lockedTransform
         }
         
@@ -585,6 +590,7 @@ class ARViewModel: ObservableObject {
     
     // Add subtle pulsing animation to indicate ready state
     private func addPulseAnimation() {
+        
         guard let placementEntity = placementEntity else { return }
         
         // Create subtle scale animation
@@ -594,14 +600,15 @@ class ARViewModel: ObservableObject {
         // Animate scale up
         var pulseUpTransform = placementEntity.transform
         pulseUpTransform.scale = pulseScale
-        placementEntity.move(to: pulseUpTransform, relativeTo: nil, duration: 0.5)
+        placementEntity.move(to: pulseUpTransform, relativeTo: placementEntity.parent, duration: 0.5)
         
         // Schedule scale down after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             var pulseDownTransform = placementEntity.transform
             pulseDownTransform.scale = originalScale
-            placementEntity.move(to: pulseDownTransform, relativeTo: nil, duration: 0.5)
+            placementEntity.move(to: pulseUpTransform, relativeTo: placementEntity.parent, duration: 0.5)
         }
+         
     }
     
     // Enter placement mode
@@ -815,6 +822,9 @@ class ARViewModel: ObservableObject {
                     // This ensures proper alignment with surfaces
                     let rotation = simd_quaternion(firstResult.worldTransform)
                     placementEntity.transform.rotation = rotation
+                    
+                    // Reset local translation to prevent drift
+                    placementEntity.transform.translation = .zero
                     
                     // Update UI
                     updatePlacementStatus(true, "Tap to adjust rotation")
