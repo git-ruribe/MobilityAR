@@ -1,0 +1,25 @@
+{
+  "" : {
+    "const-values" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master.swiftconstvalues",
+    "dependencies" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master.d",
+    "diagnostics" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master.dia",
+    "emit-module-dependencies" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master-emit-module.dia",
+    "swift-dependencies" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/MobilityAR-master.swiftdeps"
+  },
+  "/Users/rafaeluribe/SWIFT/MobilityAR/MobilityAR/AppDelegate.swift" : {
+    "index-unit-output-path" : "/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/AppDelegate.o",
+    "llvm-bc" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/AppDelegate.bc",
+    "object" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/AppDelegate.o"
+  },
+  "/Users/rafaeluribe/SWIFT/MobilityAR/MobilityAR/ContentView.swift" : {
+    "index-unit-output-path" : "/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  }
+}

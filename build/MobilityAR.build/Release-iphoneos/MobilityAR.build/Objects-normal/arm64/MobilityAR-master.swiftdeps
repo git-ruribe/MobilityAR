@@ -1,0 +1,9 @@
+version: "Apple Swift version 6.0.3 (swiftlang-6.0.3.1.10 clang-1600.0.30.1)"
+options: "2d0f41b06da230b32898bf9df13fceb7225fc4af7b7f6cf31dbff2a21bd4b02d"
+build_start_time: [1742183510, 695177000]
+build_end_time: [1742183526, 241616000]
+inputs:
+  "/Users/rafaeluribe/SWIFT/MobilityAR/MobilityAR/AppDelegate.swift": [1742168918, 399936278]
+  "/Users/rafaeluribe/SWIFT/MobilityAR/MobilityAR/ContentView.swift": [1742183489, 403468521]
+  ? "/Users/rafaeluribe/SWIFT/MobilityAR/build/MobilityAR.build/Release-iphoneos/MobilityAR.build/DerivedSources/GeneratedAssetSymbols.swift"
+  : [1742183510, 288568791]

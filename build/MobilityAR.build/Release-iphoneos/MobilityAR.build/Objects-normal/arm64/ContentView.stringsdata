@@ -1,0 +1,72 @@
+{
+  "source": "/Users/rafaeluribe/SWIFT/MobilityAR/MobilityAR/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Place Cube",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reset Cube",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mode: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stage: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inside cube: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "Distance to surface: %.3f m",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rotation: %lld°",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Planes detected: %lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 84
+        }
+      }
+    ]
+  },
+  "version": 1
+}
