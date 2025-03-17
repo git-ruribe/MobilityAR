@@ -28,11 +28,13 @@ class ARViewModel: ObservableObject {
     // Drawing mode properties
     @Published var drawingMode = false
     @Published var selectedDrawingColor: DrawingColor = .red
+    @Published var isDrawingActive = false // Tracks if user is touching screen for drawing
 
     // Drawing data storage
     var drawingPoints: [DrawingPoint] = []
     var drawingAnchors: [AnchorEntity] = []
     var lastDrawingPosition: simd_float3 = simd_float3(0, 0, 0)
+
     
     // Computed property for UI display
     var placementStageText: String {

@@ -92,11 +92,15 @@ extension ARViewModel {
         // Update state
         DispatchQueue.main.async {
             self.drawingMode = true
-            self.instructionText = "Move camera to draw - points placed every 5cm"
+            self.isDrawingActive = false // Start with drawing inactive
+            self.instructionText = "Touch and hold screen to draw - points placed every 5cm"
         }
         
         // Reset tracking for fresh camera movement detection
         lastDrawingPosition = simd_make_float3(arView.session.currentFrame?.camera.transform.columns.3 ?? SIMD4(0, 0, 0, 1))
+        
+        // Add long press gesture recognizer for drawing
+        addDrawingGestureRecognizer()
         
         // Trigger haptic feedback for mode change
         triggerModeChangeHapticFeedback()
@@ -107,8 +111,12 @@ extension ARViewModel {
         // Update state
         DispatchQueue.main.async {
             self.drawingMode = false
+            self.isDrawingActive = false
             self.instructionText = "Walk around the cube to explore"
         }
+        
+        // Remove drawing gesture recognizer
+        removeDrawingGestureRecognizer()
         
         // Trigger haptic feedback for mode change
         triggerModeChangeHapticFeedback()
@@ -178,8 +186,8 @@ extension ARViewModel {
     
     // Track camera movement for drawing
     func trackCameraForDrawing(frame: ARFrame) {
-        // Only track when in drawing mode
-        guard drawingMode else { return }
+        // Only track when in drawing mode AND user is touching screen
+        guard drawingMode && isDrawingActive else { return }
         
         // Get current camera position
         let cameraPosition = simd_make_float3(frame.camera.transform.columns.3)
@@ -286,10 +294,67 @@ extension ARViewModel {
             print("Failed to play haptic pattern: \(error)")
         }
     }
-}//
-//  DrawingMode.swift
-//  MobilityAR
-//
-//  Created by Rafael Uribe on 17/03/25.
-//
-
+    
+    // Drawing touch gesture handlers
+    
+    // Add long press gesture recognizer for drawing
+    private func addDrawingGestureRecognizer() {
+        guard let arView = arView else { return }
+        
+        // Create and store the long press gesture
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleDrawingTouch(_:)))
+        longPressGesture.minimumPressDuration = 0.1 // Very short to detect almost immediate touches
+        longPressGesture.allowableMovement = 500 // Allow movement while pressed
+        longPressGesture.name = "drawingGesture" // Tag for identification
+        
+        arView.addGestureRecognizer(longPressGesture)
+    }
+    
+    // Remove drawing gesture recognizer
+    private func removeDrawingGestureRecognizer() {
+        guard let arView = arView else { return }
+        
+        // Find and remove the drawing gesture
+        for gesture in arView.gestureRecognizers ?? [] {
+            if let longPress = gesture as? UILongPressGestureRecognizer, longPress.name == "drawingGesture" {
+                arView.removeGestureRecognizer(longPress)
+            }
+        }
+    }
+    
+    // Handle drawing touch events
+    @objc func handleDrawingTouch(_ gesture: UILongPressGestureRecognizer) {
+        guard drawingMode else { return }
+        
+        switch gesture.state {
+        case .began:
+            // Start drawing
+            DispatchQueue.main.async {
+                self.isDrawingActive = true
+                self.instructionText = "Drawing... move camera to create trail"
+            }
+            
+            // Reset position tracking to current position
+            if let currentFrame = arView?.session.currentFrame {
+                lastDrawingPosition = simd_make_float3(currentFrame.camera.transform.columns.3)
+            }
+            
+            // Haptic feedback when starting to draw
+            triggerDrawingHapticFeedback()
+            
+        case .changed:
+            // Keep drawing - nothing to do here as tracking happens in update loop
+            break
+            
+        case .ended, .cancelled, .failed:
+            // Stop drawing
+            DispatchQueue.main.async {
+                self.isDrawingActive = false
+                self.instructionText = "Touch and hold screen to draw - points placed every 5cm"
+            }
+            
+        default:
+            break
+        }
+    }
+}

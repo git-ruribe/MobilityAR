@@ -62,6 +62,25 @@ struct ContentView : View {
                 // DRAWING CONTROLS - only visible in drawing mode
                 if arViewModel.drawingMode {
                     VStack(spacing: 15) {
+                        // Drawing status indicator
+                        if arViewModel.isDrawingActive {
+                            Text("Drawing Active")
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .background(Color.green.opacity(0.8))
+                                .cornerRadius(20)
+                                .shadow(radius: 2)
+                        } else {
+                            Text("Touch & Hold to Draw")
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .background(Color.gray.opacity(0.8))
+                                .cornerRadius(20)
+                                .shadow(radius: 2)
+                        }
+                        
                         // Color palette toggle
                         Button(action: {
                             showColorPalette.toggle()
@@ -206,6 +225,7 @@ struct ContentView : View {
                         }
                         if arViewModel.drawingMode {
                             Text("Color: \(arViewModel.selectedDrawingColor.name)")
+                            Text("Drawing active: \(arViewModel.isDrawingActive ? "Yes" : "No")")
                             Text("Drawing points: \(arViewModel.drawingPoints.count)")
                         }
                         Text("Inside cube: \(arViewModel.isInsideCube ? "Yes" : "No")")
