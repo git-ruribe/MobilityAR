@@ -2,15 +2,13 @@
 //  PlacementMode.swift
 //  MobilityAR
 //
-//  Created on 17/03/25.
-//
 
 import SwiftUI
 import RealityKit
 import ARKit
 import CoreHaptics
 
-// Simplified to just two placement stages
+// Modified to include footprints in placement stage
 enum PlacementStage {
     case positionSelection // Initial positioning
     case rotationAdjustment // Adjusting rotation and ready for placement
@@ -134,6 +132,9 @@ extension ARViewModel {
                 DispatchQueue.main.async {
                     self.currentRotationDegrees = self.currentRotation * 180 / .pi
                 }
+                
+                // Update preview footprints position and rotation
+                updatePreviewFootprints(rotation: rotation)
             }
             
         case .ended:
@@ -169,6 +170,9 @@ extension ARViewModel {
                     DispatchQueue.main.async {
                         self.currentRotationDegrees = snapRotationDegrees
                     }
+                    
+                    // Update preview footprints after snap
+                    updatePreviewFootprints(rotation: rotation)
                 } else {
                     // Keep current rotation
                     currentRotation = Float(sender.translation(in: sender.view).x / 50.0) + initialRotation
@@ -238,6 +242,29 @@ extension ARViewModel {
         // Change appearance to indicate rotation mode
         updatePlacementColor(.green)
         
+        // Update footprint appearance for rotation stage
+        if leftFootprintEntity != nil && rightFootprintEntity != nil {
+            if let leftMaterial = leftFootprintEntity?.model?.materials.first as? SimpleMaterial,
+               let rightMaterial = rightFootprintEntity?.model?.materials.first as? SimpleMaterial {
+                
+                // Make footprints more visible during rotation stage
+                let leftColor = UIColor.blue.withAlphaComponent(0.4)
+                let rightColor = UIColor.green.withAlphaComponent(0.4)
+                
+                let newLeftMaterial = SimpleMaterial(color: leftColor, roughness: 0.4, isMetallic: false)
+                let newRightMaterial = SimpleMaterial(color: rightColor, roughness: 0.4, isMetallic: false)
+                
+                leftFootprintEntity?.model?.materials = [newLeftMaterial]
+                rightFootprintEntity?.model?.materials = [newRightMaterial]
+            }
+        } else {
+            // If footprints don't exist yet, create them
+            showPreviewFootprints()
+        }
+        
+        // Update footprint positions with current rotation
+        updatePreviewFootprints(rotation: placementEntity.transform.rotation)
+        
         // Update instruction to reflect single-finger pan
         DispatchQueue.main.async {
             self.instructionText = "Swipe left or right to rotate, tap Place Cube when ready"
@@ -247,6 +274,116 @@ extension ARViewModel {
         triggerStageTransitionHaptic()
     }
     
+    // Show preview footprints during placement stages
+    func showPreviewFootprints() {
+        // Create footprint models if they don't exist
+        if leftFootprintEntity == nil || rightFootprintEntity == nil {
+            createFootprintModels()
+        }
+        
+        guard let arView = arView,
+              let mainAnchor = mainAnchor,
+              let placementEntity = placementEntity,
+              let leftFootprintEntity = leftFootprintEntity,
+              let rightFootprintEntity = rightFootprintEntity else { return }
+        
+        // Create placement footprint anchors if they don't exist
+        if leftFootprintAnchor == nil {
+            leftFootprintAnchor = AnchorEntity()
+            leftFootprintAnchor?.addChild(leftFootprintEntity)
+            arView.scene.addAnchor(leftFootprintAnchor!)
+        }
+        
+        if rightFootprintAnchor == nil {
+            rightFootprintAnchor = AnchorEntity()
+            rightFootprintAnchor?.addChild(rightFootprintEntity)
+            arView.scene.addAnchor(rightFootprintAnchor!)
+        }
+        
+        // Make footprints even more transparent during positioning stage
+        if placementStage == .positionSelection {
+            if let leftMaterial = leftFootprintEntity.model?.materials.first as? SimpleMaterial,
+               let rightMaterial = rightFootprintEntity.model?.materials.first as? SimpleMaterial {
+                
+                // Create more transparent versions for positioning stage
+                let leftColor = UIColor.blue.withAlphaComponent(0.3)
+                let rightColor = UIColor.green.withAlphaComponent(0.3)
+                
+                let newLeftMaterial = SimpleMaterial(color: leftColor, roughness: 0.4, isMetallic: false)
+                let newRightMaterial = SimpleMaterial(color: rightColor, roughness: 0.4, isMetallic: false)
+                
+                leftFootprintEntity.model?.materials = [newLeftMaterial]
+                rightFootprintEntity.model?.materials = [newRightMaterial]
+            }
+        }
+        
+        // Set initial position and orientation of footprints
+        updatePreviewFootprints(rotation: placementEntity.transform.rotation)
+    }
+    
+    // Update preview footprints position and orientation
+    func updatePreviewFootprints(rotation: simd_quatf) {
+        guard let arView = arView,
+              let placementEntity = placementEntity,
+              let leftFootprintAnchor = leftFootprintAnchor,
+              let rightFootprintAnchor = rightFootprintAnchor,
+              let leftFootprintEntity = leftFootprintEntity,
+              let rightFootprintEntity = rightFootprintEntity else { return }
+        
+        // Get placement entity's world position
+        let cubeWorldTransform = placementEntity.transformMatrix(relativeTo: nil)
+        let cubeWorldPosition = simd_make_float3(cubeWorldTransform.columns.3)
+        
+        // Define the local offsets (before rotation is applied)
+        let leftLocalOffset = SIMD3<Float>(0.2, -0.04, -0.3)  // Left, down, opposite direction
+        let rightLocalOffset = SIMD3<Float>(-0.2, -0.04, -0.3)  // Right, down, opposite direction
+        
+        // Create rotation matrix from quaternion
+        let rotationMatrix = simd_matrix3x3(rotation)
+        
+        // Apply rotation to the offset vectors
+        let rotatedLeftOffset = rotationMatrix * leftLocalOffset
+        let rotatedRightOffset = rotationMatrix * rightLocalOffset
+        
+        // Calculate final world positions
+        let leftPosition = cubeWorldPosition + rotatedLeftOffset
+        let rightPosition = cubeWorldPosition + rotatedRightOffset
+        
+        // Update anchor positions
+        leftFootprintAnchor.transform.translation = leftPosition
+        rightFootprintAnchor.transform.translation = rightPosition
+        
+        // Create a 180-degree rotation to flip footprints around
+        let flipRotation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+        
+        // Create the slight inward angles
+        let leftAngle: Float = 0.05 * .pi  // ~9 degrees inward
+        let rightAngle: Float = -0.05 * .pi  // ~9 degrees inward
+        
+        // Create rotations with inward angles
+        let leftInwardRotation = simd_quatf(angle: leftAngle, axis: [0, 1, 0])
+        let rightInwardRotation = simd_quatf(angle: rightAngle, axis: [0, 1, 0])
+        
+        // Combine rotations: first flip 180°, then apply cube rotation, then apply inward angle
+        leftFootprintEntity.orientation = simd_mul(simd_mul(rotation, flipRotation), leftInwardRotation)
+        rightFootprintEntity.orientation = simd_mul(simd_mul(rotation, flipRotation), rightInwardRotation)
+        
+        // Make footprints semi-transparent during preview
+        if let leftMaterial = leftFootprintEntity.model?.materials.first as? SimpleMaterial,
+           let rightMaterial = rightFootprintEntity.model?.materials.first as? SimpleMaterial {
+            
+            // Create semi-transparent versions of the materials
+            let leftColor = UIColor.blue.withAlphaComponent(0.4)
+            let rightColor = UIColor.green.withAlphaComponent(0.4)
+            
+            let newLeftMaterial = SimpleMaterial(color: leftColor, roughness: 0.4, isMetallic: false)
+            let newRightMaterial = SimpleMaterial(color: rightColor, roughness: 0.4, isMetallic: false)
+            
+            leftFootprintEntity.model?.materials = [newLeftMaterial]
+            rightFootprintEntity.model?.materials = [newRightMaterial]
+        }
+    }
+    
     // Place cube by directly swapping entities within the same anchor
     func placeCube() {
         guard placementStage == .rotationAdjustment,
@@ -254,7 +391,9 @@ extension ARViewModel {
               let mainAnchor = mainAnchor,
               let placementEntity = placementEntity,
               let cubeEntity = cubeEntity,
-              let rotationRingEntity = rotationRingEntity else { return }
+              let rotationRingEntity = rotationRingEntity,
+              let leftFootprintEntity = leftFootprintEntity,
+              let rightFootprintEntity = rightFootprintEntity else { return }
         
         // Disable rotation ring if still a child
         rotationRingEntity.isEnabled = false
@@ -281,8 +420,8 @@ extension ARViewModel {
         // Animate to full size
         cubeEntity.move(to: finalTransform, relativeTo: mainAnchor, duration: 0.3)
         
-        // Place footprints after cube is placed
-        placeFootprints()
+        // Update footprints to final versions (more opaque)
+        finalizeFootprints()
         
         // Haptic feedback
         triggerPlacementHapticFeedback()
@@ -294,6 +433,27 @@ extension ARViewModel {
         DispatchQueue.main.async {
             self.arReady = true
             self.instructionText = "Walk around the cube to explore"
+        }
+    }
+    
+    // Finalize footprints after cube placement
+    func finalizeFootprints() {
+        guard let leftFootprintEntity = leftFootprintEntity,
+              let rightFootprintEntity = rightFootprintEntity else { return }
+        
+        // Make footprints more opaque for final placement
+        if let leftMaterial = leftFootprintEntity.model?.materials.first as? SimpleMaterial,
+           let rightMaterial = rightFootprintEntity.model?.materials.first as? SimpleMaterial {
+            
+            // Create more solid versions of the materials
+            let leftColor = UIColor.blue.withAlphaComponent(0.7)
+            let rightColor = UIColor.green.withAlphaComponent(0.7)
+            
+            let newLeftMaterial = SimpleMaterial(color: leftColor, roughness: 0.4, isMetallic: false)
+            let newRightMaterial = SimpleMaterial(color: rightColor, roughness: 0.4, isMetallic: false)
+            
+            leftFootprintEntity.model?.materials = [newLeftMaterial]
+            rightFootprintEntity.model?.materials = [newRightMaterial]
         }
     }
     
@@ -369,19 +529,19 @@ extension ARViewModel {
         self.rotationRingEntity = nil
         
         // Remove footprint anchors if they exist
-            if let leftFootprintAnchor = leftFootprintAnchor {
-                arView.scene.anchors.remove(leftFootprintAnchor)
-                self.leftFootprintAnchor = nil
-            }
-            
-            if let rightFootprintAnchor = rightFootprintAnchor {
-                arView.scene.anchors.remove(rightFootprintAnchor)
-                self.rightFootprintAnchor = nil
-            }
-            
-            // Reset entity references
-            self.leftFootprintEntity = nil
-            self.rightFootprintEntity = nil
+        if let leftFootprintAnchor = leftFootprintAnchor {
+            arView.scene.anchors.remove(leftFootprintAnchor)
+            self.leftFootprintAnchor = nil
+        }
+        
+        if let rightFootprintAnchor = rightFootprintAnchor {
+            arView.scene.anchors.remove(rightFootprintAnchor)
+            self.rightFootprintAnchor = nil
+        }
+        
+        // Reset entity references
+        self.leftFootprintEntity = nil
+        self.rightFootprintEntity = nil
     }
     
     // Reset all state variables
@@ -426,6 +586,7 @@ extension ARViewModel {
         planeAnchors.removeAll()
         
         // Note: We keep the main anchor since it now contains the real cube
+        // Note: We also keep the footprint anchors
         
         // Update state
         DispatchQueue.main.async {
@@ -538,11 +699,14 @@ extension ARViewModel {
                     // Create quaternion for rotation around Y axis
                     let targetRotation = simd_quatf(angle: rotationAngle, axis: SIMD3<Float>(0, 1, 0))
 
-
                     placementEntity.transform.rotation = targetRotation
                     
                     // Reset local translation to prevent drift
                     placementEntity.transform.translation = .zero
+                    
+                    // Show and update footprints with current position and rotation
+                    showPreviewFootprints()
+                    updatePreviewFootprints(rotation: targetRotation)
                     
                     // Update UI
                     updatePlacementStatus(true, "Tap to adjust rotation")
@@ -551,8 +715,22 @@ extension ARViewModel {
                     // Not yet stable
                     updatePlacementStatus(false, "Hold steady...")
                     updatePlacementColor(.yellow)
+                    
+                    // If we have footprints and a valid position rotation, update their position
+                    if leftFootprintAnchor != nil && rightFootprintAnchor != nil {
+                        updatePreviewFootprints(rotation: placementEntity.transform.rotation)
+                    }
                 }
             } else {
+                // Not enough samples yet, but if we have at least a few valid positions, show preview footprints
+                if positionHistory.count >= 3 {
+                    // Show preview footprints with current position and rotation
+                    if leftFootprintAnchor == nil || rightFootprintAnchor == nil {
+                        showPreviewFootprints()
+                    }
+                    updatePreviewFootprints(rotation: placementEntity.transform.rotation)
+                }
+                
                 // Not enough samples
                 updatePlacementStatus(false, "Hold steady...")
                 updatePlacementColor(.yellow)
@@ -600,10 +778,4 @@ extension ARViewModel {
             createPlaneVisualization(for: planeAnchor)
         }
     }
-}//
-//  PlacementMode.swift
-//  MobilityAR
-//
-//  Created by Rafael Uribe on 17/03/25.
-//
-
+}
