@@ -34,6 +34,12 @@ class ARViewModel: ObservableObject {
     var drawingPoints: [DrawingPoint] = []
     var drawingAnchors: [AnchorEntity] = []
     var lastDrawingPosition: simd_float3 = simd_float3(0, 0, 0)
+    
+    //Footprints
+    var leftFootprintEntity: ModelEntity?
+    var rightFootprintEntity: ModelEntity?
+    var leftFootprintAnchor: AnchorEntity?
+    var rightFootprintAnchor: AnchorEntity?
 
     
     // Computed property for UI display
@@ -141,6 +147,149 @@ class ARViewModel: ObservableObject {
         
         self.debugEntity = debugEntity
     }
+    
+    // Create footprint models
+    func createFootprintModels() {
+        // Create left footprint
+        let leftFootprint = createFootprint(isLeft: true)
+        self.leftFootprintEntity = leftFootprint
+        
+        // Create right footprint
+        let rightFootprint = createFootprint(isLeft: false)
+        self.rightFootprintEntity = rightFootprint
+    }
+
+    // Helper to create a single footprint
+    func createFootprint(isLeft: Bool) -> ModelEntity {
+        // Main sole of the foot
+        let soleLength: Float = 0.25  // 25cm long
+        let soleWidth: Float = 0.09   // 9cm wide
+        let soleMesh = MeshResource.generateBox(
+            size: [soleWidth, 0.005, soleLength],
+            cornerRadius: 0.02
+        )
+        
+        // Heel part (slightly wider)
+        let heelWidth: Float = 0.07
+        let heelLength: Float = 0.07
+        let heelMesh = MeshResource.generateBox(
+            size: [heelWidth, 0.007, heelLength],
+            cornerRadius: 0.02
+        )
+        
+        // Create the foot sole entity with translucent color
+        let color = isLeft ? UIColor.blue.withAlphaComponent(0.7) : UIColor.green.withAlphaComponent(0.7)
+        let soleMaterial = SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)
+        let footEntity = ModelEntity(mesh: soleMesh, materials: [soleMaterial])
+        
+        // Create heel with same material
+        let heelEntity = ModelEntity(mesh: heelMesh, materials: [soleMaterial])
+        
+        // Position heel at back of sole
+        heelEntity.position = [0, 0.001, soleLength/2 - heelLength/2]
+        footEntity.addChild(heelEntity)
+        
+        // Add text label (L or R)
+        let textMesh = MeshResource.generateText(
+            isLeft ? "L" : "R",
+            extrusionDepth: 0.01,
+            font: .systemFont(ofSize: 0.1),
+            containerFrame: .zero,
+            alignment: .center,
+            lineBreakMode: .byTruncatingTail
+        )
+        
+        let textMaterial = SimpleMaterial(color: .white, roughness: 0.1, isMetallic: true)
+        let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
+        
+        // Scale and position text
+        textEntity.scale = [0.2, 0.2, 0.2]
+        textEntity.position = [0, 0.01, -0.05]
+        
+        // First, rotate text to face up (90 degrees around X axis)
+        let faceUpRotation = simd_quatf(angle: Float.pi/2, axis: [1, 0, 0])
+        
+        // Add 180 degree rotation around Y axis
+        let flipRotation = simd_quatf(angle: Float.pi, axis: [0, 1, 0])
+        
+        // Combine rotations: first face up, then flip
+        textEntity.orientation = simd_mul(flipRotation, faceUpRotation)
+        
+        // Mirror text if needed
+        textEntity.transform.scale.x *= -1  // Mirror both for consistent appearance
+        
+        footEntity.addChild(textEntity)
+        
+        // No longer mirroring the whole foot
+        
+        return footEntity
+    }
+
+    // Place footprints in world - call this after cube placement is confirmed
+    func placeFootprints() {
+        guard let arView = arView,
+              let cubeEntity = cubeEntity,
+              let leftFootprintEntity = leftFootprintEntity,
+              let rightFootprintEntity = rightFootprintEntity else { return }
+        
+        // Get the cube's world position and rotation
+        let cubeWorldTransform = cubeEntity.transformMatrix(relativeTo: nil)
+        let cubeWorldPosition = simd_make_float3(cubeWorldTransform.columns.3)
+        let cubeRotation = cubeEntity.transform.rotation
+        
+        // Define the local offsets (before rotation is applied)
+        let leftLocalOffset = SIMD3<Float>(0.2, -0.04, -0.3)  // Left, up, opposite direction
+        let rightLocalOffset = SIMD3<Float>(-0.2, -0.04, -0.3)  // Right, up, opposite direction
+        
+        // Create rotation matrix from quaternion
+        let rotationMatrix = simd_matrix3x3(cubeRotation)
+        
+        // Apply rotation to the offset vectors
+        let rotatedLeftOffset = rotationMatrix * leftLocalOffset
+        let rotatedRightOffset = rotationMatrix * rightLocalOffset
+        
+        // Calculate final world positions
+        let leftPosition = cubeWorldPosition + rotatedLeftOffset
+        let rightPosition = cubeWorldPosition + rotatedRightOffset
+        
+        // Create anchors at calculated world positions
+        let leftAnchor = AnchorEntity(world: leftPosition)
+        let rightAnchor = AnchorEntity(world: rightPosition)
+        
+        // Add footprints to anchors
+        leftAnchor.addChild(leftFootprintEntity)
+        rightAnchor.addChild(rightFootprintEntity)
+        
+        // Store anchor references
+        self.leftFootprintAnchor = leftAnchor
+        self.rightFootprintAnchor = rightAnchor
+        
+        // Add anchors to scene
+        arView.scene.addAnchor(leftAnchor)
+        arView.scene.addAnchor(rightAnchor)
+        
+        // Create a 180-degree rotation to flip footprints around
+        let flipRotation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+        
+        // Create the slight inward angles
+        let leftAngle: Float = 0.05 * .pi  // ~9 degrees inward
+        let rightAngle: Float = -0.05 * .pi  // ~9 degrees inward
+        
+        // Create rotations with inward angles
+        let leftInwardRotation = simd_quatf(angle: leftAngle, axis: [0, 1, 0])
+        let rightInwardRotation = simd_quatf(angle: rightAngle, axis: [0, 1, 0])
+        
+        // Combine rotations: first flip 180°, then apply cube rotation, then apply inward angle
+        // Order matters in quaternion multiplication!
+        leftFootprintEntity.orientation = simd_mul(simd_mul(cubeRotation, flipRotation), leftInwardRotation)
+        rightFootprintEntity.orientation = simd_mul(simd_mul(cubeRotation, flipRotation), rightInwardRotation)
+        
+        // Update instruction text
+        DispatchQueue.main.async {
+            self.instructionText = "Stand on the footprints to interact with the cube"
+        }
+    }
+    
     
     // Check if camera is inside the cube
     func checkCameraPosition(frame: ARFrame) {

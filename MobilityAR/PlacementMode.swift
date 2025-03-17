@@ -193,10 +193,38 @@ extension ARViewModel {
     // Transition to rotation adjustment stage
     func transitionToRotationStage() {
         guard placementStage == .positionSelection, positionStable,
-              let placementEntity = placementEntity,
-              let rotationRingEntity = rotationRingEntity else { return }
+                  let placementEntity = placementEntity,
+                  let rotationRingEntity = rotationRingEntity,
+                  let arView = arView else { return }
+            
+            // Get current camera orientation to set initial cube rotation
+            if let frame = arView.session.currentFrame {
+                let cameraTransform = frame.camera.transform
+                
+                // Get camera direction vector (ignoring vertical component for level placement)
+                let cameraDirection = simd_make_float3(
+                    -cameraTransform.columns.2.x,
+                    0,
+                    -cameraTransform.columns.2.z
+                )
+                let normalizedDirection = simd_normalize(cameraDirection)
+
+                // Calculate the angle around Y axis (yaw) from the normalized direction
+                let rotationAngle = atan2(normalizedDirection.x, normalizedDirection.z)
+
+                // Create quaternion for rotation around Y axis
+                let cubeRotation = simd_quatf(angle: rotationAngle, axis: SIMD3<Float>(0, 1, 0))
+                
+                // Apply this rotation to the placement entity
+                placementEntity.transform.rotation = cubeRotation
+                
+                // Convert to degrees for display and tracking
+                let rotationAngleY = atan2(normalizedDirection.x, normalizedDirection.z)
+                initialRotation = rotationAngleY
+                currentRotation = rotationAngleY
+                currentRotationDegrees = rotationAngleY * 180 / .pi
+            }
         
-        // Lock position and transition to rotation mode
         placementStage = .rotationAdjustment
         
         // Add rotation ring to placement entity
@@ -209,11 +237,6 @@ extension ARViewModel {
         
         // Change appearance to indicate rotation mode
         updatePlacementColor(.green)
-        
-        // Reset rotation tracking
-        initialRotation = 0
-        currentRotation = 0
-        currentRotationDegrees = 0
         
         // Update instruction to reflect single-finger pan
         DispatchQueue.main.async {
@@ -258,6 +281,9 @@ extension ARViewModel {
         // Animate to full size
         cubeEntity.move(to: finalTransform, relativeTo: mainAnchor, duration: 0.3)
         
+        // Place footprints after cube is placed
+        placeFootprints()
+        
         // Haptic feedback
         triggerPlacementHapticFeedback()
         
@@ -283,6 +309,9 @@ extension ARViewModel {
         createPlacementIndicator()
         createDebugEntity()
         createRotationRing()
+        
+        // Create footprint models
+        createFootprintModels()
         
         guard let placementEntity = placementEntity,
               let debugEntity = debugEntity else { return }
@@ -338,6 +367,21 @@ extension ARViewModel {
         self.placementEntity = nil
         self.debugEntity = nil
         self.rotationRingEntity = nil
+        
+        // Remove footprint anchors if they exist
+            if let leftFootprintAnchor = leftFootprintAnchor {
+                arView.scene.anchors.remove(leftFootprintAnchor)
+                self.leftFootprintAnchor = nil
+            }
+            
+            if let rightFootprintAnchor = rightFootprintAnchor {
+                arView.scene.anchors.remove(rightFootprintAnchor)
+                self.rightFootprintAnchor = nil
+            }
+            
+            // Reset entity references
+            self.leftFootprintEntity = nil
+            self.rightFootprintEntity = nil
     }
     
     // Reset all state variables
@@ -480,8 +524,22 @@ extension ARViewModel {
                     
                     // Also set the orientation from the hit result
                     // This ensures proper alignment with surfaces
-                    let rotation = simd_quaternion(firstResult.worldTransform)
-                    placementEntity.transform.rotation = rotation
+                    // Get camera position and orientation
+                    let cameraDirection = simd_make_float3(
+                        -cameraTransform.columns.2.x,
+                        0, // Zero out Y component to keep cube level with ground
+                        -cameraTransform.columns.2.z
+                    )
+                    let normalizedDirection = simd_normalize(cameraDirection)
+
+                    // Calculate the angle around Y axis (yaw) from the normalized direction
+                    let rotationAngle = atan2(normalizedDirection.x, normalizedDirection.z)
+
+                    // Create quaternion for rotation around Y axis
+                    let targetRotation = simd_quatf(angle: rotationAngle, axis: SIMD3<Float>(0, 1, 0))
+
+
+                    placementEntity.transform.rotation = targetRotation
                     
                     // Reset local translation to prevent drift
                     placementEntity.transform.translation = .zero
