@@ -39,12 +39,6 @@ extension ARViewModel {
         createTargetSphere()
         createLevelDisplay()
         
-        // Set up success particle system
-        setupParticleEffect()
-        
-        // Create guidance elements
-        createExerciseGuideElements()
-        
         // Update state
         DispatchQueue.main.async {
             self.bendingMode = true
@@ -52,8 +46,6 @@ extension ARViewModel {
             self.exerciseStarted = false
             self.instructionText = "Stand upright then tap screen to start the exercise"
         }
-        
-
         
         // Initialize exercise tracking directly instead of calling the private method
         exerciseAdmin?.currentExerciseIndex = 0
@@ -91,20 +83,6 @@ extension ARViewModel {
             self.levelTextAnchor = nil
         }
         
-        // Clean up guidance elements
-        if let guideArrowAnchor = guideArrowAnchor {
-            arView.scene.anchors.remove(guideArrowAnchor)
-            self.guideArrowAnchor = nil
-            self.guideArrowEntity = nil
-        }
-        
-        if let progressTrackAnchor = progressTrackAnchor {
-            arView.scene.anchors.remove(progressTrackAnchor)
-            self.progressTrackAnchor = nil
-            self.progressTrackEntity = nil
-            self.progressMarkerEntity = nil
-        }
-        
         // Show cube again
         cubeEntity?.isEnabled = true
         
@@ -114,7 +92,7 @@ extension ARViewModel {
             if exerciseStarted && !exerciseComplete {
                 var updatedStats = stats
                 updatedStats.endTime = Date()
-                updatedStats.reachedLevels = currentLevel - 1
+                updatedStats.reachedLevels = currentLevel //- 1
                 
                 // Calculate max depth from height
                 let startHeight = initialTargetHeight()
@@ -291,166 +269,6 @@ extension ARViewModel {
         }
     }
     
-    // Create visual guidance elements for exercise
-    func createExerciseGuideElements() {
-        createProgressTrack()
-        createDirectionalArrow()
-    }
-    
-    // Create progress track indicator
-    func createProgressTrack() {
-        guard let arView = arView,
-              let targetSphereAnchor = targetSphereAnchor else { return }
-        
-        // Calculate track height - distance from min to max height
-        let trackHeight = initialTargetHeight() - (initialTargetHeight() - Float(maxLevels - 1) * 0.1)
-        
-        // Create track entity
-        let trackWidth: Float = 0.02
-        let trackDepth: Float = 0.02
-        let trackMesh = MeshResource.generateBox(size: [trackWidth, trackHeight, trackDepth], cornerRadius: 0.005)
-        let trackMaterial = SimpleMaterial(color: UIColor.gray.withAlphaComponent(0.5), roughness: 0.5, isMetallic: false)
-        let trackEntity = ModelEntity(mesh: trackMesh, materials: [trackMaterial])
-        
-        // Create progress marker (sphere)
-        let markerRadius: Float = 0.025
-        let markerMesh = MeshResource.generateSphere(radius: markerRadius)
-        let markerMaterial = SimpleMaterial(color: .yellow.withAlphaComponent(0.9), roughness: 0.3, isMetallic: true)
-        let markerEntity = ModelEntity(mesh: markerMesh, materials: [markerMaterial])
-        
-        // Create light to make marker more visible
-        let light = PointLightComponent(
-            color: .yellow,
-            intensity: 300,
-            attenuationRadius: 0.3
-        )
-        markerEntity.components.set(light)
-        
-        // Position marker at top of track initially
-        markerEntity.position = [0, trackHeight/2 - markerRadius, trackWidth]
-        trackEntity.addChild(markerEntity)
-        
-        // Position track to the side of exercise area
-        let spherePos = targetSphereAnchor.transform.translation
-        let trackPosition = SIMD3<Float>(
-            spherePos.x + 0.4, // 40cm to the side
-            spherePos.y - trackHeight/2, // Bottom aligned with floor
-            spherePos.z
-        )
-        
-        let trackAnchor = AnchorEntity(world: trackPosition)
-        trackAnchor.addChild(trackEntity)
-        
-        // Add to scene
-        arView.scene.addAnchor(trackAnchor)
-        
-        // Store references
-        self.progressTrackEntity = trackEntity
-        self.progressMarkerEntity = markerEntity
-        self.progressTrackAnchor = trackAnchor
-        
-        // Update progress marker to starting position
-        updateProgressMarker()
-    }
-    
-    // Create directional arrow for exercise guidance
-    func createDirectionalArrow() {
-        guard let arView = arView,
-              let targetSphereAnchor = targetSphereAnchor else { return }
-        
-        // Create arrow shaft
-        let shaftWidth: Float = 0.02
-        let shaftHeight: Float = 0.12
-        let shaftDepth: Float = 0.02
-        let shaftMesh = MeshResource.generateBox(size: [shaftWidth, shaftHeight, shaftDepth])
-        let arrowMaterial = SimpleMaterial(color: UIColor.white.withAlphaComponent(0.7), roughness: 0.3, isMetallic: true)
-        let arrowEntity = ModelEntity(mesh: shaftMesh, materials: [arrowMaterial])
-        
-        // Create arrow head
-        let headWidth: Float = 0.06
-        let headHeight: Float = 0.04
-        let headDepth: Float = 0.02
-        let headMesh = MeshResource.generateBox(size: [headWidth, headHeight, headDepth])
-        let headEntity = ModelEntity(mesh: headMesh, materials: [arrowMaterial])
-        
-        // Position head at bottom of shaft
-        headEntity.position = [0, -shaftHeight/2 - headHeight/2, 0]
-        arrowEntity.addChild(headEntity)
-        
-        // Position arrow above the target sphere
-        let spherePos = targetSphereAnchor.transform.translation
-        let arrowPosition = SIMD3<Float>(
-            spherePos.x,
-            spherePos.y + 0.3, // 30cm above sphere
-            spherePos.z
-        )
-        
-        let arrowAnchor = AnchorEntity(world: arrowPosition)
-        arrowAnchor.addChild(arrowEntity)
-        
-        // Add to scene
-        arView.scene.addAnchor(arrowAnchor)
-        
-        // Store references
-        self.guideArrowEntity = arrowEntity
-        self.guideArrowAnchor = arrowAnchor
-        
-        // Animate arrow continuously
-        animateDirectionalArrow()
-    }
-    
-    // Animate directional arrow up and down
-    func animateDirectionalArrow() {
-        guard let arrowEntity = guideArrowEntity,
-              let arrowAnchor = guideArrowAnchor,
-              bendingMode else { return }
-        
-        // Define animation parameters
-        let moveUp = Transform(translation: [0, 0.05, 0])
-        let moveDown = Transform(translation: [0, -0.05, 0])
-        let animationDuration: TimeInterval = 1.0
-        
-        // Animate down
-        arrowEntity.move(to: moveDown, relativeTo: arrowAnchor, duration: animationDuration)
-        
-        // Then animate up and repeat
-        DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration) {
-            arrowEntity.move(to: moveUp, relativeTo: arrowAnchor, duration: animationDuration)
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration) {
-                if self.bendingMode && !self.exerciseComplete {
-                    self.animateDirectionalArrow()
-                }
-            }
-        }
-    }
-    
-    // Update progress marker position based on current level
-    func updateProgressMarker() {
-        guard let progressMarkerEntity = progressMarkerEntity,
-              let progressTrackEntity = progressTrackEntity else { return }
-        
-        // Calculate progress percentage
-        let levelProgress = Float(currentLevel - 1) / Float(maxLevels - 1)
-        
-        // Get track height from entity bounds
-        let trackHeight = progressTrackEntity.visualBounds(relativeTo: progressTrackEntity).extents.y
-        
-        // Calculate new position - move from top to bottom as progress increases
-        let startY = trackHeight/2 - 0.025 // Offset by marker radius
-        let endY = -trackHeight/2 + 0.025 // Offset by marker radius
-        let newY = startY - levelProgress * (startY - endY)
-        
-        // Only update if significant change
-        if abs(progressMarkerEntity.position.y - newY) > 0.01 {
-            var newTransform = progressMarkerEntity.transform
-            newTransform.translation.y = newY
-            
-            // Animate marker movement
-            progressMarkerEntity.move(to: newTransform, relativeTo: progressTrackEntity, duration: 0.3)
-        }
-    }
-    
     // Move target sphere down to next level
     func advanceToNextLevel() {
         guard bendingMode, exerciseStarted, !exerciseComplete, currentLevel < maxLevels, !isAdvancingLevel else {
@@ -490,9 +308,6 @@ extension ARViewModel {
             
             // Update level display
             self.updateLevelDisplay()
-            
-            // Update progress marker
-            self.updateProgressMarker()
             
             // Reset level timer
             self.levelStartTime = Date()
@@ -692,9 +507,6 @@ extension ARViewModel {
         
         // Update level text position
         updateLevelTextPosition()
-        
-        // Update arrow position
-        updateArrowPosition()
     }
     
     // Update level text position to stay above sphere
@@ -713,24 +525,6 @@ extension ARViewModel {
         transform.translation = textPosition
         
         levelTextAnchor.move(to: transform, relativeTo: nil, duration: 0.3)
-    }
-    
-    // Update directional arrow position
-    func updateArrowPosition() {
-        guard let guideArrowAnchor = guideArrowAnchor,
-              let targetSphereAnchor = targetSphereAnchor else { return }
-        
-        let spherePosition = targetSphereAnchor.transform.translation
-        let arrowPosition = SIMD3<Float>(
-            spherePosition.x,
-            spherePosition.y + 0.3, // 30cm above sphere
-            spherePosition.z
-        )
-        
-        var transform = guideArrowAnchor.transform
-        transform.translation = arrowPosition
-        
-        guideArrowAnchor.move(to: transform, relativeTo: nil, duration: 0.3)
     }
     
     // Get initial height for analytics
@@ -857,18 +651,6 @@ extension ARViewModel {
                 }
             }
         }
-    }
-    
-    // MARK: - Visual Effects
-    
-    // Setup simplified visual feedback for successful reaches
-    func setupParticleEffect() {
-        // We'll use color changes and scale animations instead of particles
-        // due to compatibility issues with ParticleEmitterComponent
-        guard let targetSphereEntity = targetSphereEntity else { return }
-        
-        // Store reference to use this entity for effects later
-        self.successParticleSystem = nil
     }
     
     // Animate sphere on exercise completion
@@ -1015,7 +797,3 @@ extension ARViewModel {
         }
     }
 }
-
-// Note: The SessionDelegate class in InteractionMode.swift
-// should be updated to call updateBendingExercise in its
-// session(_:didUpdate:) method
