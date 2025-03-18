@@ -53,14 +53,7 @@ extension ARViewModel {
             self.instructionText = "Stand upright then tap screen to start the exercise"
         }
         
-        // Initialize exercise stats
-        exerciseStats = ExerciseStats(
-            startTime: Date(),
-            endTime: nil,
-            reachedLevels: 0,
-            maxDepthReached: 0,
-            repetitionTimes: []
-        )
+
         
         // Initialize exercise tracking directly instead of calling the private method
         exerciseAdmin?.currentExerciseIndex = 0
@@ -117,19 +110,27 @@ extension ARViewModel {
         
         // Record exercise completion
         if let stats = exerciseStats {
-            var updatedStats = stats
-            updatedStats.endTime = Date()
-            updatedStats.reachedLevels = currentLevel - 1
+            // Only update stats if exercise was actually started and stats haven't been finalized
+            if exerciseStarted && !exerciseComplete {
+                var updatedStats = stats
+                updatedStats.endTime = Date()
+                updatedStats.reachedLevels = currentLevel - 1
+                
+                // Calculate max depth from height
+                let startHeight = initialTargetHeight()
+                let currentHeight = targetSphereHeight
+                let depthReached = startHeight - currentHeight
+                updatedStats.maxDepthReached = depthReached
+                
+                self.exerciseStats = updatedStats
+                
+                print("EXIT EXERCISE: Timer ended at \(Date())")
+                print("Exercise duration: \(updatedStats.totalDuration)s")
+            } else if !exerciseStarted {
+                print("EXIT EXERCISE: Exercise was never started, no stats recorded")
+            }
             
-            // Calculate max depth from height
-            let startHeight = initialTargetHeight()
-            let currentHeight = targetSphereHeight
-            let depthReached = startHeight - currentHeight
-            updatedStats.maxDepthReached = depthReached
-            
-            self.exerciseStats = updatedStats
-            
-            // Record in exercise admin
+            // Record in exercise admin regardless if completed was requested
             if completed {
                 exerciseAdmin?.completeCurrentExercise()
             }
@@ -138,6 +139,7 @@ extension ARViewModel {
         // Update state
         DispatchQueue.main.async {
             self.bendingMode = false
+            self.exerciseComplete = false
             self.instructionText = "Walk around the cube to explore"
         }
         
@@ -151,6 +153,15 @@ extension ARViewModel {
     // Start exercise after user is ready
     func startBendingExercise() {
         guard bendingMode, !exerciseStarted else { return }
+        
+        // Initialize exercise stats - MOVED FROM enterBendingMode
+            exerciseStats = ExerciseStats(
+                startTime: Date(), // This now happens when exercise actually starts
+                endTime: nil,
+                reachedLevels: 0,
+                maxDepthReached: 0,
+                repetitionTimes: []
+            )
         
         DispatchQueue.main.async {
             self.exerciseStarted = true
@@ -591,9 +602,25 @@ extension ARViewModel {
         // Calculate total score
         let totalScore = Int(levelScore + timeScore + consistencyScore)
         
-        // Store performance score using the extension property
+        // IMPORTANT: Update the stats with final values
+        // This section needs to be more comprehensive
         if var stats = exerciseStats {
+            // Set the end time to now
+            stats.endTime = Date()
+            
+            // Update reached levels (current level minus 1 since we're ending)
+            stats.reachedLevels = currentLevel - 1
+            
+            // Calculate max depth from height
+            let startHeight = initialTargetHeight()
+            let currentHeight = targetSphereHeight
+            let depthReached = startHeight - currentHeight
+            stats.maxDepthReached = depthReached
+            
+            // Store the performance score
             stats.performanceScore = totalScore
+            
+            // Update the stats in the view model
             self.exerciseStats = stats
         }
 
@@ -608,10 +635,7 @@ extension ARViewModel {
         // Add completion animation to sphere
         animateSphereCompletion()
         
-        // After a delay, show summary
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            self.exitBendingMode(completed: true)
-        }
+        // No longer automatically exit - let user press Continue
     }
     
     // MARK: - Position Calculations

@@ -11,6 +11,9 @@ struct ContentView : View {
     @State private var showDebug = false
     @State private var showColorPalette = false
     
+    @State private var timerTrigger = 0 // Add this line - used to force UI updates
+
+    
     var body: some View {
         ZStack {
             ARViewContainer(viewModel: arViewModel)
@@ -164,6 +167,28 @@ struct ContentView : View {
                 // BENDING EXERCISE OVERLAY - only visible in bending mode
                 if arViewModel.bendingMode {
                     VStack {
+                        // Exercise status indicator
+                        if !arViewModel.exerciseStarted {
+                            Text("TAP SCREEN TO START EXERCISE")
+                                .font(.headline)
+                                .padding()
+                                .background(Color.blue.opacity(0.7))
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                                .padding(.bottom, 10)
+                        } else {
+                            // Timer indicator - only show when exercise has started
+                            if let stats = arViewModel.exerciseStats {
+                                Text("Time: \(Int(stats.totalDuration))s")
+                                    .font(.headline)
+                                    .padding()
+                                    .background(Color.green.opacity(0.7))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
+                                    .padding(.bottom, 10)
+                            }
+                        }
+                        
                         // Level indicator
                         Text("Level \(arViewModel.currentLevel) of \(arViewModel.maxLevels)")
                             .font(.headline)
@@ -349,8 +374,18 @@ struct ContentView : View {
                 }
             }
         }
+        // Add a timer to update the UI during exercises
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if arViewModel.bendingMode && arViewModel.exerciseStarted && !arViewModel.exerciseComplete {
+                // Just increment timer trigger to force UI refresh
+                timerTrigger += 1
+            }
+        }
     }
+    
 }
+
+
 
 // UIViewRepresentable for ARView with added bending exercise tap
 struct ARViewContainer: UIViewRepresentable {
