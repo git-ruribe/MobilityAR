@@ -1,20 +1,19 @@
 //
-//  ContentView.swift
+//  TrainView.swift
 //  MobilityAR
+//
+//  Created on 17/03/25.
 //
 
 import SwiftUI
 import RealityKit
 
-struct ContentView : View {
+struct TrainView: View {
     @StateObject private var arViewModel = ARViewModel()
-    @State private var showDebug = false
-    @State private var showColorPalette = false
-    
-    @State private var timerTrigger = 0 // Add this line - used to force UI updates
-
+    @EnvironmentObject var dataManager: DataManager
     
     var body: some View {
+        // This is basically the original ContentView, just renamed
         ZStack {
             ARViewContainer(viewModel: arViewModel)
                 .edgesIgnoringSafeArea(.all)
@@ -46,8 +45,9 @@ struct ContentView : View {
                     Spacer()
                     
                     // Debug toggle button
+                    
                     Button(action: {
-                        showDebug.toggle()
+                        arViewModel.showDebug.toggle()
                     }) {
                         Image(systemName: "info.circle")
                             .font(.system(size: 20))
@@ -56,12 +56,15 @@ struct ContentView : View {
                             .foregroundColor(.white)
                             .clipShape(Circle())
                     }
+                    
                     .padding(.trailing, 10)
                 }
                 .padding(.top, 50)
                 .padding(.trailing, 20)
                 
                 Spacer()
+                     
+                
                 
                 // DRAWING CONTROLS - only visible in drawing mode
                 if arViewModel.drawingMode {
@@ -86,8 +89,9 @@ struct ContentView : View {
                         }
                         
                         // Color palette toggle
+                        
                         Button(action: {
-                            showColorPalette.toggle()
+                            arViewModel.showColorPalette.toggle()
                         }) {
                             HStack {
                                 Circle()
@@ -102,6 +106,7 @@ struct ContentView : View {
                             .cornerRadius(20)
                             .shadow(radius: 2)
                         }
+                         
                         
                         // Clear drawing button
                         Button(action: {
@@ -138,12 +143,13 @@ struct ContentView : View {
                     .padding(.bottom, 20)
                     
                     // Color palette pop-up
-                    if showColorPalette {
+                    
+                    if arViewModel.showColorPalette {
                         HStack {
                             ForEach(DrawingColor.allCases, id: \.rawValue) { color in
                                 Button(action: {
                                     arViewModel.setDrawingColor(color)
-                                    showColorPalette = false
+                                    arViewModel.showColorPalette = false
                                 }) {
                                     Circle()
                                         .fill(Color(color.uiColor))
@@ -162,6 +168,7 @@ struct ContentView : View {
                         .cornerRadius(15)
                         .padding(.bottom, 15)
                     }
+                    
                 }
                 
                 // BENDING EXERCISE OVERLAY - only visible in bending mode
@@ -278,12 +285,12 @@ struct ContentView : View {
                             .shadow(radius: 3)
                         }
                         
-                        // Exercise button - NEW ADDITION
+                        // Exercise button
                         Button(action: {
-                            arViewModel.enterBendingMode()
+                            arViewModel.enterBendingModeWithUserSettings()
                         }) {
                             VStack {
-                                Image(systemName: "figure.bend.down")
+                                Image(systemName: "figure.cooldown")
                                     .font(.system(size: 24))
                                 Text("Exercise")
                                     .font(.caption)
@@ -299,7 +306,8 @@ struct ContentView : View {
                 }
                 
                 // Debug panel - only shown when toggled
-                if showDebug {
+                
+                if arViewModel.showDebug {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Mode: \(arViewModel.placementMode ? "Placement" : arViewModel.drawingMode ? "Drawing" : arViewModel.bendingMode ? "Exercise" : "Interaction")")
                         if arViewModel.placementMode {
@@ -327,6 +335,8 @@ struct ContentView : View {
                     .cornerRadius(8)
                     .padding()
                 }
+                
+                
             }
             
             // EXERCISE RESULTS POPUP - shown when exercise is completed
@@ -352,14 +362,42 @@ struct ContentView : View {
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
+                        // Added button to view in calendar
                         Button(action: {
+                            // Save exercise data and navigate to calendar
+                            /*dataManager.saveExerciseSession(from: arViewModel.exerciseStats, exerciseType: .bending)
                             arViewModel.exitBendingMode(completed: true)
+                    
+                            // Switch to the calendar tab
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                NotificationCenter.default.post(name: .switchToCalendarTab, object: nil)
+                             
+                             }
+                             */
+                            arViewModel.completeAndSaveExercise()
+                            
+                        }) {
+                            HStack {
+                                Image(systemName: "calendar")
+                                Text("View in Calendar")
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        }
+                        .padding(.horizontal)
+                        
+                        Button(action: {
+                            //arViewModel.exitBendingMode(completed: true)
+                            arViewModel.completeAndSaveExerciseContinue()
                         }) {
                             Text("Continue")
                                 .fontWeight(.bold)
                                 .padding()
                                 .frame(maxWidth: .infinity)
-                                .background(Color.blue)
+                                .background(Color.purple)
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
@@ -374,20 +412,23 @@ struct ContentView : View {
                 }
             }
         }
-        // Add a timer to update the UI during exercises
+        
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             if arViewModel.bendingMode && arViewModel.exerciseStarted && !arViewModel.exerciseComplete {
                 // Just increment timer trigger to force UI refresh
-                timerTrigger += 1
+                arViewModel.timerTrigger += 1
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .exerciseCompleted)) { notification in
+            if let exerciseData = notification.object as? ExerciseSessionData {
+                dataManager.saveExerciseSession(exerciseData)
+            }
+        }
+         
     }
-    
 }
 
-
-
-// UIViewRepresentable for ARView with added bending exercise tap
+// Keep the ARViewContainer from the original ContentView
 struct ARViewContainer: UIViewRepresentable {
     var viewModel: ARViewModel
     
@@ -410,6 +451,9 @@ struct ARViewContainer: UIViewRepresentable {
     }
 }
 
-#Preview {
-    ContentView()
+struct TrainView_Previews: PreviewProvider {
+    static var previews: some View {
+        TrainView()
+            .environmentObject(DataManager.shared)
+    }
 }

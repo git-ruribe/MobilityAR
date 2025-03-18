@@ -30,6 +30,11 @@ class ARViewModel: ObservableObject {
     @Published var selectedDrawingColor: DrawingColor = .red
     @Published var isDrawingActive = false // Tracks if user is touching screen for drawing
     
+    // Additional UI state properties
+    @Published var showDebug: Bool = false
+    @Published var showColorPalette: Bool = false
+    @Published var timerTrigger: Int = 0
+    
     // MARK: - Bending Exercise Properties
     // Bending mode state
     @Published var bendingMode = false
@@ -38,6 +43,152 @@ class ARViewModel: ObservableObject {
     @Published var maxLevels: Int = 10
     @Published var exerciseComplete = false
     @Published var exerciseStarted = false
+    
+    // User settings
+        private var userHeight: Int {
+            return UserDefaults.standard.integer(forKey: "userHeight")
+        }
+        
+        private var exerciseDifficulty: Int {
+            return UserDefaults.standard.integer(forKey: "exerciseDifficulty")
+        }
+        
+        private var hapticFeedbackEnabled: Bool {
+            return UserDefaults.standard.bool(forKey: "hapticFeedbackEnabled")
+        }
+        
+        private var audioFeedbackEnabled: Bool {
+            return UserDefaults.standard.bool(forKey: "audioFeedbackEnabled")
+        }
+        
+        // Initialize default settings if not already set
+        func initializeDefaultSettings() {
+            if UserDefaults.standard.object(forKey: "hapticFeedbackEnabled") == nil {
+                UserDefaults.standard.set(true, forKey: "hapticFeedbackEnabled")
+            }
+            
+            if UserDefaults.standard.object(forKey: "audioFeedbackEnabled") == nil {
+                UserDefaults.standard.set(true, forKey: "audioFeedbackEnabled")
+            }
+            
+            if UserDefaults.standard.object(forKey: "showDebugInfo") == nil {
+                UserDefaults.standard.set(false, forKey: "showDebugInfo")
+            }
+            
+            if UserDefaults.standard.object(forKey: "exerciseDifficulty") == nil {
+                UserDefaults.standard.set(1, forKey: "exerciseDifficulty") // Medium by default
+            }
+        }
+        
+        // Apply user settings when entering bending mode
+        func applyUserSettingsForExercise() -> ExerciseConfiguration {
+            // Base configuration
+            var config = ExerciseAdministration().createDefaultBendingExercise()
+            
+            // Adjust starting height based on user height if available
+            if userHeight > 0 {
+                // Adjust starting height to be proportional to user height
+                // Default is 1.0m for a 170cm person
+                let heightRatio = Float(userHeight) / 170.0
+                config.startingHeight = 1.0 * heightRatio
+                
+                // Also adjust minimum height
+                config.minimumHeight = 0.1 * heightRatio
+            }
+            
+            // Adjust difficulty settings
+            switch exerciseDifficulty {
+            case 0: // Easy
+                config.stepDistance = 0.08 // Smaller steps
+                config.repetitions = 3
+            case 1: // Medium (default settings)
+                config.stepDistance = 0.1
+                config.repetitions = 5
+            case 2: // Hard
+                config.stepDistance = 0.12 // Bigger steps
+                config.repetitions = 7
+            default:
+                break
+            }
+            
+            return config
+        }
+        
+        // Override haptic feedback methods to respect user settings
+        func triggerHapticFeedbackIfEnabled() {
+            if hapticFeedbackEnabled {
+                triggerHapticFeedback()
+            }
+        }
+        
+        func triggerExerciseStartHapticFeedbackIfEnabled() {
+            if hapticFeedbackEnabled {
+                triggerExerciseStartHapticFeedback()
+            }
+        }
+        
+        func triggerSuccessHapticFeedbackIfEnabled() {
+            if hapticFeedbackEnabled {
+                triggerSuccessHapticFeedback()
+            }
+        }
+        
+        func triggerCompletionHapticFeedbackIfEnabled() {
+            if hapticFeedbackEnabled {
+                triggerCompletionHapticFeedback()
+            }
+        }
+        
+        // Audio feedback methods
+        func playAudioFeedback(for event: AudioFeedbackEvent) {
+            guard audioFeedbackEnabled else { return }
+            
+            // Audio feedback implementation would go here
+            // This could use AVFoundation to play appropriate sounds
+            // For now, we'll just log the event
+            print("Would play audio for: \(event)")
+        }
+        
+        // Audio feedback events
+        enum AudioFeedbackEvent {
+            case exerciseStart
+            case levelComplete
+            case exerciseComplete
+            case countdown
+        }
+        
+        // Enhanced exercise completion to notify the app about completed exercise
+        func completeExerciseWithNotification() {
+            // Call original completion method
+            completeExercise()
+            
+            // Only notify if we have valid stats
+            if let stats = exerciseStats {
+                // Create session data
+                let sessionData = ExerciseSessionData(
+                    date: Date(),
+                    exerciseType: .bending, // Currently only supporting bending
+                    durationInSeconds: stats.totalDuration,
+                    repetitions: stats.reachedLevels,
+                    maxDepthReached: stats.maxDepthReached,
+                    performanceScore: stats.performanceScore
+                )
+                
+                // Post notification with session data
+                NotificationCenter.default.post(
+                    name: .exerciseCompleted,
+                    object: sessionData
+                )
+            }
+        }
+        
+        // Override enter bending mode to apply user settings
+        func enterBendingModeWithUserSettings() {
+            let config = applyUserSettingsForExercise()
+            enterBendingMode(configuration: config)
+        }
+    
+    
 
     // Exercise metrics tracking structure
     struct ExerciseStats {

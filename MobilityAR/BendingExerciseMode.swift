@@ -371,87 +371,98 @@ extension ARViewModel {
     }
     
     // Complete the exercise
-    func completeExercise() {
-        // Record final level time
-        if let startTime = levelStartTime {
-            let duration = Date().timeIntervalSince(startTime)
-            exerciseStats?.repetitionTimes.append(duration)
-            
-            // Report to exercise admin
-            let finalDepth = initialTargetHeight() - targetSphereHeight
-            exerciseAdmin?.completeRepetition(depthReached: finalDepth)
-        }
-        
-        // Calculate performance score
-        let levelScore = Float(currentLevel) / Float(maxLevels) * 50.0  // Up to 50 points for levels
-        
-        // Time score
-        var timeScore: Float = 0
-        if let stats = exerciseStats, !stats.repetitionTimes.isEmpty {
-            let avgTime = Float(stats.averageRepTime)
-            // Optimal time is 2-4 seconds per rep
-            if avgTime < 2.0 {
-                timeScore = 20 * (avgTime / 2.0)  // Reduced score if too fast
-            } else if avgTime > 6.0 {
-                timeScore = 20 * (6.0 / avgTime)  // Reduced score if too slow
-            } else {
-                timeScore = 20 * (1.0 - (avgTime - 2.0) / 4.0)  // Full score for optimal time
+        func completeExercise() {
+            // Record final level time
+            if let startTime = levelStartTime {
+                let duration = Date().timeIntervalSince(startTime)
+                exerciseStats?.repetitionTimes.append(duration)
+                
+                // Report to exercise admin
+                let finalDepth = initialTargetHeight() - targetSphereHeight
+                exerciseAdmin?.completeRepetition(depthReached: finalDepth)
             }
-        }
-        
-        // Consistency score
-        var consistencyScore: Float = 30.0
-        if let stats = exerciseStats, stats.repetitionTimes.count > 1 {
-            let times = stats.repetitionTimes
-            let avgTime = times.reduce(0, +) / Double(times.count)
             
-            // Calculate standard deviation
-            let sumSquaredDiff = times.reduce(0) { $0 + pow($1 - avgTime, 2) }
-            let stdDev = sqrt(sumSquaredDiff / Double(times.count))
+            // Calculate performance score
+            let levelScore = Float(currentLevel) / Float(maxLevels) * 50.0  // Up to 50 points for levels
             
-            // Convert to a score - lower stdDev is better
-            let normalizedStdDev = min(Float(stdDev / avgTime), 1.0)  // Relative to average
-            consistencyScore = 30.0 * (1.0 - normalizedStdDev)
-        }
-        
-        // Calculate total score
-        let totalScore = Int(levelScore + timeScore + consistencyScore)
-        
-        // IMPORTANT: Update the stats with final values
-        // This section needs to be more comprehensive
-        if var stats = exerciseStats {
-            // Set the end time to now
-            stats.endTime = Date()
+            // Time score
+            var timeScore: Float = 0
+            if let stats = exerciseStats, !stats.repetitionTimes.isEmpty {
+                let avgTime = Float(stats.averageRepTime)
+                // Optimal time is 2-4 seconds per rep
+                if avgTime < 2.0 {
+                    timeScore = 20 * (avgTime / 2.0)  // Reduced score if too fast
+                } else if avgTime > 6.0 {
+                    timeScore = 20 * (6.0 / avgTime)  // Reduced score if too slow
+                } else {
+                    timeScore = 20 * (1.0 - (avgTime - 2.0) / 4.0)  // Full score for optimal time
+                }
+            }
             
-            // Update reached levels (current level minus 1 since we're ending)
-            stats.reachedLevels = currentLevel - 1
+            // Consistency score
+            var consistencyScore: Float = 30.0
+            if let stats = exerciseStats, stats.repetitionTimes.count > 1 {
+                let times = stats.repetitionTimes
+                let avgTime = times.reduce(0, +) / Double(times.count)
+                
+                // Calculate standard deviation
+                let sumSquaredDiff = times.reduce(0) { $0 + pow($1 - avgTime, 2) }
+                let stdDev = sqrt(sumSquaredDiff / Double(times.count))
+                
+                // Convert to a score - lower stdDev is better
+                let normalizedStdDev = min(Float(stdDev / avgTime), 1.0)  // Relative to average
+                consistencyScore = 30.0 * (1.0 - normalizedStdDev)
+            }
             
-            // Calculate max depth from height
-            let startHeight = initialTargetHeight()
-            let currentHeight = targetSphereHeight
-            let depthReached = startHeight - currentHeight
-            stats.maxDepthReached = depthReached
+            // Calculate total score
+            let totalScore = Int(levelScore + timeScore + consistencyScore)
             
-            // Store the performance score
-            stats.performanceScore = totalScore
-            
-            // Update the stats in the view model
-            self.exerciseStats = stats
-        }
+            // IMPORTANT: Update the stats with final values
+            // This section needs to be more comprehensive
+            if var stats = exerciseStats {
+                // Set the end time to now
+                stats.endTime = Date()
+                
+                // Update reached levels (current level minus 1 since we're ending)
+                stats.reachedLevels = currentLevel - 1
+                
+                // Calculate max depth from height
+                let startHeight = initialTargetHeight()
+                let currentHeight = targetSphereHeight
+                let depthReached = startHeight - currentHeight
+                stats.maxDepthReached = depthReached
+                
+                // Store the performance score
+                stats.performanceScore = totalScore
+                
+                // Update the stats in the view model
+                self.exerciseStats = stats
+            }
 
-        DispatchQueue.main.async {
-            self.exerciseComplete = true
-            self.instructionText = "Exercise complete! Great job!"
+            DispatchQueue.main.async {
+                self.exerciseComplete = true
+                self.instructionText = "Exercise complete! Great job!"
+            }
+            
+            // Trigger completion haptic feedback if enabled
+            if UserDefaults.standard.bool(forKey: "hapticFeedbackEnabled") {
+                triggerCompletionHapticFeedback()
+            }
+            
+            // Play audio feedback if enabled
+            if UserDefaults.standard.bool(forKey: "audioFeedbackEnabled") {
+                // Would call audio play function here
+                print("Audio feedback: Exercise complete")
+            }
+            
+            // Add completion animation to sphere
+            animateSphereCompletion()
+            
+            // No longer automatically exit - let user press Continue
+            
+            // Notify for data management - this will be handled by completeAndSaveExercise()
+            // when the user interacts with result buttons
         }
-        
-        // Trigger completion haptic feedback
-        triggerCompletionHapticFeedback()
-        
-        // Add completion animation to sphere
-        animateSphereCompletion()
-        
-        // No longer automatically exit - let user press Continue
-    }
     
     // MARK: - Position Calculations
     
